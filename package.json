@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1.5",
+    "@supabase/supabase-js": "^2.56.0",
     "@vue-flow/background": "^1.3.2",
     "@vue-flow/core": "^1.46.0",
     "pinia": "^3.0.3",

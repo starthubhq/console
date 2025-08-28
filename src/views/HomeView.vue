@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import 'splitpanes/dist/splitpanes.css'
 import { Splitpanes, Pane } from 'splitpanes'
+import InputsComponent from '@/components/InputsComponent.vue';
+// import DiagramComponent from '@/components/DiagramComponent.vue';
 </script>
 
 <template>
@@ -9,13 +11,13 @@ import { Splitpanes, Pane } from 'splitpanes'
       <Splitpanes>
         <Pane min-size="20">
           <div class="panel inputs">
-            inputs
+            <InputsComponent></InputsComponent>
           </div>
         </Pane>
 
         <Pane min-size="20">
-          <div class="panel architecture">
-            diagram
+          <div class="panel diagram">
+            <!-- <DiagramComponent></DiagramComponent> -->
           </div>
         </Pane>
       </Splitpanes>
@@ -25,7 +27,7 @@ import { Splitpanes, Pane } from 'splitpanes'
       <Splitpanes>
         <Pane min-size="20">
           <div class="panel logs">
-            logs
+            
           </div>
         </Pane>
         <Pane min-size="20">
@@ -69,7 +71,7 @@ import { Splitpanes, Pane } from 'splitpanes'
   background-color: #ffffff;
 }
 
-.architecture {
+.diagram {
   background-color: #0d0d18;
   color: white;
 }
