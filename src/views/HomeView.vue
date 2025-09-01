@@ -16,7 +16,7 @@ import InputsComponent from '@/components/InputsComponent.vue';
         </Pane>
 
         <Pane min-size="20">
-          <div class="panel diagram">
+          <div class="panel">
             <!-- <DiagramComponent></DiagramComponent> -->
           </div>
         </Pane>
@@ -32,7 +32,7 @@ import InputsComponent from '@/components/InputsComponent.vue';
         </Pane>
         <Pane min-size="20">
           <div class="panel">
-            vnc
+            Coming soon
           </div>
         </Pane>
       </Splitpanes>
@@ -58,6 +58,7 @@ import InputsComponent from '@/components/InputsComponent.vue';
   height: 100%;
   width: 100%;
   overflow: auto;
+  border: 1px solid black;
   /* padding: 16px; */
 }
 
