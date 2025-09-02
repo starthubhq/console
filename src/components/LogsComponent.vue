@@ -1,6 +1,6 @@
 <template>
   <div class="logs-container">
-    <div class="logs-header">
+    <!-- <div class="logs-header">
       <h3>Real-time Logs</h3>
       <div class="connection-status">
         <span 
@@ -14,17 +14,17 @@
       >
         {{ isConnected ? 'Disconnect' : 'Connect' }}
       </button>
-    </div>
+    </div> -->
     
     <div class="logs-content">
-      <div class="logs-filters">
+      <!-- <div class="logs-filters">
         <input 
           v-model="filterText" 
           placeholder="Filter logs..." 
           class="filter-input"
         />
         <button @click="clearLogs" class="clear-btn">Clear</button>
-      </div>
+      </div> -->
       
       <div class="logs-display" ref="logsDisplay">
         <div 
@@ -76,7 +76,7 @@ const filteredLogs = computed(() => {
 // WebSocket methods
 const connect = () => {
   try {
-    ws.value = new WebSocket(import.meta.env.VITE_WS_URL || 'ws://127.0.0.1:3000/ws')
+    ws.value = new WebSocket('ws://127.0.0.1:3000/ws')
     
     ws.value.onopen = () => {
       isConnected.value = true
