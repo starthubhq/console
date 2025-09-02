@@ -2,7 +2,8 @@
 import 'splitpanes/dist/splitpanes.css'
 import { Splitpanes, Pane } from 'splitpanes'
 import InputsComponent from '@/components/InputsComponent.vue';
-// import DiagramComponent from '@/components/DiagramComponent.vue';
+import DiagramComponent from '@/components/DiagramComponent.vue';
+import LogsComponent from '@/components/LogsComponent.vue';
 </script>
 
 <template>
@@ -17,7 +18,7 @@ import InputsComponent from '@/components/InputsComponent.vue';
 
         <Pane min-size="20">
           <div class="panel">
-            <!-- <DiagramComponent></DiagramComponent> -->
+            <DiagramComponent></DiagramComponent>
           </div>
         </Pane>
       </Splitpanes>
@@ -27,7 +28,7 @@ import InputsComponent from '@/components/InputsComponent.vue';
       <Splitpanes>
         <Pane min-size="20">
           <div class="panel logs">
-            
+            <LogsComponent></LogsComponent>
           </div>
         </Pane>
         <Pane min-size="20">
