@@ -1,36 +1,35 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, watch, computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { supabase } from '@/lib/supabase'
 
-type PortDirection = 'INPUT' | 'OUTPUT'
-type PortType = 'STRING' | 'NUMBER' | 'BOOLEAN' | 'JSON' | string
+type PortType = 'string' | 'number' | 'boolean' | 'json' | 'type' | string
 
-type ActionPort = {
-  id: string
+type LockFilePort = {
   name: string
-  created_at: string
-  rls_owner_id: string | null
-  action_port_type: PortType
-  action_version_id: string
-  action_port_direction: PortDirection
+  description: string
+  type: PortType
+  required: boolean
+  default: any
 }
 
-type ActionResponse = {
-  action_id: string
-  name: string | null
-  description: string | null
-  created_at: string
-  action_version_id: string
-  version_number: string
-  version_created_at: string
-  commit_sha: string | null
-  inputs: ActionPort[]
-  outputs: ActionPort[]
+type LockFileResponse = {
+  name: string
+  description: string
+  version: string
+  kind: string
+  manifest_version: number
+  repository: string
+  license: string
+  inputs: LockFilePort[]
+  outputs: LockFilePort[]
+  distribution: {
+    primary: string
+  }
+  digest: string
 }
 
 const route = useRoute()
-const data = ref<ActionResponse | null>(null)
+const data = ref<LockFileResponse | null>(null)
 const errorMsg = ref<string | null>(null)
 const loading = ref(false)
 const submitting = ref(false)
@@ -46,10 +45,11 @@ const form = reactive<Record<string, any>>({})
 // Build sensible defaults per port type
 function defaultForType(t: PortType) {
   switch (t) {
-    case 'STRING': return ''
-    case 'NUMBER': return null
-    case 'BOOLEAN': return false
-    case 'JSON': return '{}'
+    case 'string': return ''
+    case 'number': return null
+    case 'boolean': return false
+    case 'json': return '{}'
+    case 'type': return ''
     default: return ''
   }
 }
@@ -67,36 +67,39 @@ async function fetchData() {
     ?? (route.query.v as string | undefined)
     ?? null
 
-  console.info({
-      p_namespace: namespace,
-      p_action_slug: actionSlug,
-      p_version_number: version
-    })
-  const { data: res, error } = await supabase.rpc(
-    // make sure this matches your DB function name
-    'get_action_version_by_namespace_slug_version',
-    {
-      p_namespace: 'tgirotto',
-      p_action_slug: 'tom-action-4',
-      p_version_number: '0.1.0'
-    }
-  )
+  if (!namespace || !actionSlug || !version) {
+    errorMsg.value = 'Missing required parameters: namespace, slug, or version'
+    loading.value = false
+    return
+  }
 
-  if (error) {
-    errorMsg.value = error.message
-  } else {
-    console.info(res)
-    // res is a single JSON object (or {}), normalize to null if empty
-    const obj = (res && Object.keys(res).length) ? (res as ActionResponse) : null
-    data.value = obj
+  // Construct the lock file URL
+  const lockFileUrl = `https://api.starthub.so/storage/v1/object/public/artifacts/${namespace}/${actionSlug}/${version}/lock.json`
+  
+  console.info('Fetching lock file from:', lockFileUrl)
+
+  try {
+    const response = await fetch(lockFileUrl)
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch lock file: ${response.status} ${response.statusText}`)
+    }
+
+    const lockData = await response.json() as LockFileResponse
+    console.info('Lock file data:', lockData)
+    
+    data.value = lockData
 
     // initialize form defaults from inputs
-    if (obj?.inputs?.length) {
-      for (const p of obj.inputs) {
-        // avoid collisions: port names should be unique per action version
-        form[p.name] = defaultForType(p.action_port_type)
+    if (lockData?.inputs?.length) {
+      for (const p of lockData.inputs) {
+        // Use the default value from the lock file if available, otherwise use type-based default
+        form[p.name] = p.default !== null ? p.default : defaultForType(p.type)
       }
     }
+  } catch (error) {
+    console.error('Error fetching lock file:', error)
+    errorMsg.value = error instanceof Error ? error.message : 'Failed to fetch lock file'
   }
 
   loading.value = false
@@ -107,29 +110,36 @@ const inputs = computed(() => data.value?.inputs ?? [])
 const outputs = computed(() => data.value?.outputs ?? [])
 
 // Optional: simple per-field hint from type
-function placeholderFor(p: ActionPort) {
-  switch (p.action_port_type) {
-    case 'STRING': return `Enter ${p.name}…`
-    case 'NUMBER': return `Enter number for ${p.name}…`
-    case 'BOOLEAN': return ''
-    case 'JSON': return `Paste JSON for ${p.name}…`
+function placeholderFor(p: LockFilePort) {
+  switch (p.type) {
+    case 'string': return `Enter ${p.name}…`
+    case 'number': return `Enter number for ${p.name}…`
+    case 'boolean': return ''
+    case 'json': return `Paste JSON for ${p.name}…`
+    case 'type': return `Enter type for ${p.name}…`
     default: return `Enter ${p.name}…`
   }
 }
 
-function coerceValue(port: ActionPort, raw: any) {
-  switch (port.action_port_type) {
-    case 'NUMBER':
+function coerceValue(port: LockFilePort, raw: any) {
+  switch (port.type) {
+    case 'number':
       // Allow empty -> null, else parse float
       if (raw === '' || raw === null || typeof raw === 'undefined') return null
       const n = Number(raw)
       return Number.isFinite(n) ? n : null
-    case 'BOOLEAN':
+    case 'boolean':
       return Boolean(raw)
-    case 'JSON':
-      // Do not parse here; keep as string. Parse on submit with try/catch.
-      return String(raw ?? '')
-    case 'STRING':
+    case 'json':
+      // Parse JSON immediately to return an object, not a string
+      if (raw === '' || raw === null || typeof raw === 'undefined') return {}
+      try {
+        return JSON.parse(String(raw))
+      } catch {
+        return {}
+      }
+    case 'string':
+    case 'type':
     default:
       return String(raw ?? '')
   }
@@ -145,17 +155,7 @@ async function onSubmit() {
   for (const p of inputs.value) {
     const raw = form[p.name]
     const val = coerceValue(p, raw)
-
-    if (p.action_port_type === 'JSON') {
-      // Validate JSON (optional)
-      try {
-        payload[p.name] = JSON.parse(val as string)
-      } catch {
-        errors.push(`"${p.name}" must be valid JSON`)
-      }
-    } else {
-      payload[p.name] = val
-    }
+    payload[p.name] = val
   }
 
   if (errors.length) {
@@ -166,9 +166,8 @@ async function onSubmit() {
   // TODO: wire this to your runner/execution path.
   // For now, just log the payload.
   console.log('Execute action', {
-    action_id: data.value.action_id,
-    action_version_id: data.value.action_version_id,
-    version: data.value.version_number,
+    name: data.value.name,
+    version: data.value.version,
     inputs: payload,
   })
 
@@ -184,10 +183,15 @@ async function onSubmit() {
     ? `${namespace}/${actionSlug}@${version}`
     : `${namespace}/${actionSlug}`
 
+  // Convert payload to simple array format
+  const inputsArray = Object.entries(payload).map(([key, value]) => ({ [key]: value }))
+  
   const body = {
     action: actionRef,        // Rust expects String
-    inputs: payload,          // arbitrary JSON object
+    inputs: inputsArray,      // simple array format
   }
+
+  console.log('🔍 DEBUG: Sending inputs array:', JSON.stringify(inputsArray, null, 2))
 
   try {
     
@@ -205,7 +209,7 @@ async function onSubmit() {
       throw new Error(`Run failed: ${resp.status} ${txt}`)
     }
 
-    console.info(`here`)
+    console.info(`Action submitted successfully`)
     // success UX — swap with your toast system if you have one
     // alert('Dispatched! Check your workflow.')
   } catch (e: any) {
@@ -230,7 +234,7 @@ watch(
     <div v-else-if="errorMsg" class="text-red-600 whitespace-pre-line">{{ errorMsg }}</div>
     <div v-else-if="data">
       <h2 class="text-xl font-semibold">
-        {{ data.name ?? '(unnamed action)' }}@{{ data.version_number }}
+        {{ data.name ?? '(unnamed action)' }}@{{ data.version }}
       </h2>
       <p class="text-gray-600 mb-4">{{ data.description }}</p>
 
@@ -239,15 +243,17 @@ watch(
 
         <div v-if="!inputs.length" class="text-gray-500">No inputs.</div>
 
-        <div v-for="p in inputs" :key="p.id" class="flex flex-col gap-1">
+        <div v-for="p in inputs" :key="p.name" class="flex flex-col gap-1">
           <label class="font-medium">
             {{ p.name }}
-            <span class="text-xs text-gray-500">({{ p.action_port_type }})</span>
+            <span class="text-xs text-gray-500">({{ p.type }})</span>
+            <span v-if="p.required" class="text-xs text-red-500">*</span>
           </label>
+          <p v-if="p.description" class="text-xs text-gray-600">{{ p.description }}</p>
 
           <!-- STRING -->
           <input
-            v-if="p.action_port_type === 'STRING'"
+            v-if="p.type === 'string'"
             type="text"
             class="border rounded px-3 py-2"
             :placeholder="placeholderFor(p)"
@@ -256,7 +262,7 @@ watch(
 
           <!-- NUMBER -->
           <input
-            v-else-if="p.action_port_type === 'NUMBER'"
+            v-else-if="p.type === 'number'"
             type="number"
             class="border rounded px-3 py-2"
             :placeholder="placeholderFor(p)"
@@ -265,7 +271,7 @@ watch(
           />
 
           <!-- BOOLEAN -->
-          <label v-else-if="p.action_port_type === 'BOOLEAN'" class="inline-flex items-center gap-2">
+          <label v-else-if="p.type === 'boolean'" class="inline-flex items-center gap-2">
             <input
               type="checkbox"
               class="h-4 w-4"
@@ -276,12 +282,21 @@ watch(
 
           <!-- JSON -->
           <textarea
-            v-else-if="p.action_port_type === 'JSON'"
+            v-else-if="p.type === 'json'"
             class="border rounded px-3 py-2 font-mono"
             rows="6"
             :placeholder="placeholderFor(p)"
             v-model="form[p.name]"
           ></textarea>
+
+          <!-- TYPE -->
+          <input
+            v-else-if="p.type === 'type'"
+            type="text"
+            class="border rounded px-3 py-2"
+            :placeholder="placeholderFor(p)"
+            v-model="form[p.name]"
+          />
 
           <!-- Fallback (treat as STRING) -->
           <input
@@ -304,8 +319,12 @@ watch(
       <h3 class="font-medium mt-8">Outputs</h3>
       <div v-if="!outputs.length" class="text-gray-500">No outputs.</div>
       <ul v-else class="list-disc ml-6">
-        <li v-for="o in outputs" :key="o.id">
-          {{ o.name }} <span class="text-xs text-gray-500">({{ o.action_port_type }})</span>
+        <li v-for="o in outputs" :key="o.name">
+          <div class="flex flex-col">
+            <span class="font-medium">{{ o.name }}</span>
+            <span class="text-xs text-gray-500">({{ o.type }})</span>
+            <span v-if="o.description" class="text-xs text-gray-600">{{ o.description }}</span>
+          </div>
         </li>
       </ul>
     </div>
