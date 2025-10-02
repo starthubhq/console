@@ -4,6 +4,7 @@ import { Splitpanes, Pane } from 'splitpanes'
 import InputsComponent from '@/components/InputsComponent.vue';
 import DiagramComponent from '@/components/DiagramComponent.vue';
 import LogsComponent from '@/components/LogsComponent.vue';
+import TreeComponent from '@/components/TreeComponent.vue';
 </script>
 
 <template>
@@ -32,8 +33,8 @@ import LogsComponent from '@/components/LogsComponent.vue';
           </div>
         </Pane>
         <Pane min-size="20">
-          <div class="panel">
-            Coming soon
+          <div class="panel logs">
+            <TreeComponent msg="Hello"></TreeComponent>
           </div>
         </Pane>
       </Splitpanes>
