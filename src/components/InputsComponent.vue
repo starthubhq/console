@@ -5,7 +5,6 @@ import { useRoute } from 'vue-router'
 type PortType = 'string' | 'number' | 'boolean' | 'json' | 'type' | string
 
 type LockFilePort = {
-  name: string
   description: string
   type: PortType
   required: boolean
@@ -20,12 +19,13 @@ type LockFileResponse = {
   manifest_version: number
   repository: string
   license: string
-  inputs: LockFilePort[]
-  outputs: LockFilePort[]
-  distribution: {
+  inputs: Record<string, LockFilePort>
+  outputs: Record<string, LockFilePort>
+  types: Record<string, any>
+  distribution?: {
     primary: string
   }
-  digest: string
+  digest?: string
 }
 
 const route = useRoute()
@@ -74,7 +74,7 @@ async function fetchData() {
   }
 
   // Construct the lock file URL
-  const lockFileUrl = `https://api.starthub.so/storage/v1/object/public/artifacts/${namespace}/${actionSlug}/${version}/lock.json`
+  const lockFileUrl = `https://api.starthub.so/storage/v1/object/public/artifacts/${namespace}/${actionSlug}/${version}/starthub-lock.json`
   
   console.info('Fetching lock file from:', lockFileUrl)
 
@@ -91,10 +91,10 @@ async function fetchData() {
     data.value = lockData
 
     // initialize form defaults from inputs
-    if (lockData?.inputs?.length) {
-      for (const p of lockData.inputs) {
+    if (lockData?.inputs) {
+      for (const [name, port] of Object.entries(lockData.inputs)) {
         // Use the default value from the lock file if available, otherwise use type-based default
-        form[p.name] = p.default !== null ? p.default : defaultForType(p.type)
+        form[name] = port.default !== null ? port.default : defaultForType(port.type)
       }
     }
   } catch (error) {
@@ -106,11 +106,23 @@ async function fetchData() {
 }
 
 // Derived lists for rendering
-const inputs = computed(() => data.value?.inputs ?? [])
-const outputs = computed(() => data.value?.outputs ?? [])
+const inputs = computed(() => {
+  if (!data.value?.inputs) return []
+  return Object.entries(data.value.inputs).map(([name, port]) => ({
+    name,
+    ...port
+  }))
+})
+const outputs = computed(() => {
+  if (!data.value?.outputs) return []
+  return Object.entries(data.value.outputs).map(([name, port]) => ({
+    name,
+    ...port
+  }))
+})
 
 // Optional: simple per-field hint from type
-function placeholderFor(p: LockFilePort) {
+function placeholderFor(p: LockFilePort & { name: string }) {
   switch (p.type) {
     case 'string': return `Enter ${p.name}…`
     case 'number': return `Enter number for ${p.name}…`
@@ -148,14 +160,16 @@ function coerceValue(port: LockFilePort, raw: any) {
 async function onSubmit() {
   if (!data.value) return
 
-  // Build payload { portName: value }
-  const payload: Record<string, any> = {}
+  // Build payload as array of input values
+  const payload: Array<any> = []
   const errors: string[] = []
 
   for (const p of inputs.value) {
     const raw = form[p.name]
     const val = coerceValue(p, raw)
-    payload[p.name] = val
+    
+    // Just push the value directly
+    payload.push(val)
   }
 
   if (errors.length) {
@@ -171,7 +185,7 @@ async function onSubmit() {
     inputs: payload,
   })
 
-  // Compose action ref like "namespace/slug@version"
+  // Compose action ref like "namespace/slug:version"
   const namespace = String(route.params.namespace ?? '')
   const actionSlug = String(route.params.slug ?? '')
   const version =
@@ -180,18 +194,15 @@ async function onSubmit() {
     ?? null
 
   const actionRef = version
-    ? `${namespace}/${actionSlug}@${version}`
+    ? `${namespace}/${actionSlug}:${version}`
     : `${namespace}/${actionSlug}`
 
-  // Convert payload to simple array format
-  const inputsArray = Object.entries(payload).map(([key, value]) => ({ [key]: value }))
-  
   const body = {
     action: actionRef,        // Rust expects String
-    inputs: inputsArray,      // simple array format
+    inputs: payload,         // array format with just values
   }
 
-  console.log('🔍 DEBUG: Sending inputs array:', JSON.stringify(inputsArray, null, 2))
+  console.log('🔍 DEBUG: Sending inputs array:', JSON.stringify(payload, null, 2))
 
   try {
     
@@ -234,7 +245,7 @@ watch(
     <div v-else-if="errorMsg" class="text-red-600 whitespace-pre-line">{{ errorMsg }}</div>
     <div v-else-if="data">
       <h2 class="text-xl font-semibold">
-        {{ data.name ?? '(unnamed action)' }}@{{ data.version }}
+        {{ data.name ?? '(unnamed action)' }}:{{ data.version }}
       </h2>
       <p class="text-gray-600 mb-4">{{ data.description }}</p>
 
