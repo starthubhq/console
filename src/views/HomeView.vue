@@ -17,11 +17,11 @@ import TreeComponent from '@/components/TreeComponent.vue';
           </div>
         </Pane>
 
-        <Pane min-size="20">
+        <!-- <Pane min-size="20">
           <div class="panel">
             <DiagramComponent></DiagramComponent>
           </div>
-        </Pane>
+        </Pane> -->
       </Splitpanes>
     </Pane>
 
@@ -32,11 +32,11 @@ import TreeComponent from '@/components/TreeComponent.vue';
             <LogsComponent></LogsComponent>
           </div>
         </Pane>
-        <Pane min-size="20">
+        <!-- <Pane min-size="20">
           <div class="panel logs">
             <TreeComponent msg="Hello"></TreeComponent>
           </div>
-        </Pane>
+        </Pane> -->
       </Splitpanes>
     </Pane>
   </Splitpanes>

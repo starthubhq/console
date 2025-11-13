@@ -94,7 +94,14 @@ async function fetchData() {
     if (lockData?.inputs) {
       for (const [name, port] of Object.entries(lockData.inputs)) {
         // Use the default value from the lock file if available, otherwise use type-based default
-        form[name] = port.default !== null ? port.default : defaultForType(port.type)
+        let defaultValue = port.default !== null ? port.default : defaultForType(port.type)
+        
+        // For JSON types, convert objects/arrays to JSON strings for the textarea
+        if (port.type === 'json' && typeof defaultValue === 'object' && defaultValue !== null) {
+          defaultValue = JSON.stringify(defaultValue, null, 2)
+        }
+        
+        form[name] = defaultValue
       }
     }
   } catch (error) {
@@ -160,30 +167,36 @@ function coerceValue(port: LockFilePort, raw: any) {
 async function onSubmit() {
   if (!data.value) return
 
-  // Build payload as array of input values
+  // Build payload as array of properly typed input values
   const payload: Array<any> = []
   const errors: string[] = []
 
+  // Process inputs in order to match server expectations
   for (const p of inputs.value) {
     const raw = form[p.name]
-    const val = coerceValue(p, raw)
     
-    // Just push the value directly
-    payload.push(val)
+    // Validate required fields
+    if (p.required && (raw === null || raw === undefined || raw === '')) {
+      errors.push(`Required field '${p.name}' is missing`)
+      continue
+    }
+    
+    // Coerce value to proper type based on port type
+    const coercedValue = coerceValue(p, raw)
+    
+    // For required fields, ensure we have a valid value after coercion
+    if (p.required && coercedValue === null && p.type !== 'number') {
+      errors.push(`Required field '${p.name}' has an invalid value`)
+      continue
+    }
+    
+    payload.push(coercedValue)
   }
 
   if (errors.length) {
     errorMsg.value = errors.join('\n')
     return
   }
-
-  // TODO: wire this to your runner/execution path.
-  // For now, just log the payload.
-  console.log('Execute action', {
-    name: data.value.name,
-    version: data.value.version,
-    inputs: payload,
-  })
 
   // Compose action ref like "namespace/slug:version"
   const namespace = String(route.params.namespace ?? '')
@@ -197,19 +210,26 @@ async function onSubmit() {
     ? `${namespace}/${actionSlug}:${version}`
     : `${namespace}/${actionSlug}`
 
+  // Build request body matching server's expected format
+  // Server expects: { action: string, inputs: Vec<Value> }
+  // where inputs is an array of properly typed JSON values
   const body = {
-    action: actionRef,        // Rust expects String
-    inputs: payload,         // array format with just values
+    action: actionRef,
+    inputs: payload,  // Array of properly typed JSON values (not strings)
   }
 
-  console.log('🔍 DEBUG: Sending inputs array:', JSON.stringify(payload, null, 2))
+  console.log('🔍 Sending to /api/run:', {
+    action: actionRef,
+    inputs: payload,
+    inputsType: payload.map(v => typeof v),
+  })
 
   try {
-    
     submitting.value = true
     errorMsg.value = null
 
-    const resp = await fetch('/api/run', {
+    console.log('🔍 Sending to /api/run:', body)
+    const resp = await fetch('http://localhost:3000/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -220,11 +240,12 @@ async function onSubmit() {
       throw new Error(`Run failed: ${resp.status} ${txt}`)
     }
 
-    console.info(`Action submitted successfully`)
+    const result = await resp.json()
+    console.info('✅ Action submitted successfully:', result)
     // success UX — swap with your toast system if you have one
     // alert('Dispatched! Check your workflow.')
   } catch (e: any) {
-    console.info(e)
+    console.error('❌ Error submitting action:', e)
     errorMsg.value = String(e?.message ?? e)
   } finally {
     submitting.value = false
@@ -278,7 +299,7 @@ watch(
             class="border rounded px-3 py-2"
             :placeholder="placeholderFor(p)"
             :value="form[p.name]"
-            @input="form[p.name] = ($event.target as HTMLInputElement).value"
+            @input="form[p.name] = ($event.target as HTMLInputElement).value === '' ? null : ($event.target as HTMLInputElement).value"
           />
 
           <!-- BOOLEAN -->
