@@ -141,27 +141,36 @@ function placeholderFor(p: LockFilePort & { name: string }) {
 }
 
 function coerceValue(port: LockFilePort, raw: any) {
-  switch (port.type) {
-    case 'number':
-      // Allow empty -> null, else parse float
-      if (raw === '' || raw === null || typeof raw === 'undefined') return null
-      const n = Number(raw)
-      return Number.isFinite(n) ? n : null
-    case 'boolean':
-      return Boolean(raw)
-    case 'json':
-      // Parse JSON immediately to return an object, not a string
-      if (raw === '' || raw === null || typeof raw === 'undefined') return {}
-      try {
-        return JSON.parse(String(raw))
-      } catch {
-        return {}
-      }
-    case 'string':
-    case 'type':
-    default:
-      return String(raw ?? '')
+  // If already an object/array, return as-is
+  if (typeof raw === 'object' && raw !== null) return raw
+  
+  // Try to parse as JSON first (if it's a string)
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw)
+    } catch {
+      // JSON parse failed, continue to type-specific parsing
+    }
   }
+  
+  // Try to parse as number
+  if (port.type === 'number') {
+    if (raw === '' || raw === null || raw === undefined) return null
+    const n = Number(raw)
+    if (Number.isFinite(n)) return n
+    return raw // Keep original if not a valid number
+  }
+  
+  // Try to parse as boolean
+  if (port.type === 'boolean') {
+    if (raw === true || raw === false) return raw
+    if (raw === 'true' || raw === '1') return true
+    if (raw === 'false' || raw === '0') return false
+    return raw // Keep original if not a valid boolean
+  }
+  
+  // For everything else, return as-is
+  return raw
 }
 
 async function onSubmit() {
