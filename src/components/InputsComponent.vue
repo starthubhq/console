@@ -19,8 +19,8 @@ type LockFileResponse = {
   manifest_version: number
   repository: string
   license: string
-  inputs: Record<string, LockFilePort>
-  outputs: Record<string, LockFilePort>
+  inputs: Record<string, LockFilePort> | Array<LockFilePort & { name: string }>
+  outputs: Record<string, LockFilePort> | Array<LockFilePort & { name: string }>
   types: Record<string, any>
   distribution?: {
     primary: string
@@ -92,16 +92,50 @@ async function fetchData() {
 
     // initialize form defaults from inputs
     if (lockData?.inputs) {
-      for (const [name, port] of Object.entries(lockData.inputs)) {
-        // Use the default value from the lock file if available, otherwise use type-based default
-        let defaultValue = port.default !== null ? port.default : defaultForType(port.type)
-        
-        // For JSON types, convert objects/arrays to JSON strings for the textarea
-        if (port.type === 'json' && typeof defaultValue === 'object' && defaultValue !== null) {
-          defaultValue = JSON.stringify(defaultValue, null, 2)
+      // Handle both array and object formats for inputs
+      if (Array.isArray(lockData.inputs)) {
+        // Inputs is an array format
+        for (const port of lockData.inputs) {
+          const name = port.name
+          // Check if this type is defined in the types field (custom type)
+          if (lockData.types && port.type && lockData.types[port.type]) {
+            // Extract the schema from types and use it as the default value
+            const schema = lockData.types[port.type]
+            // Stringify the schema for display in the textarea
+            form[name] = JSON.stringify(schema, null, 2)
+          } else {
+            // Use the default value from the lock file if available, otherwise use type-based default
+            let defaultValue = port.default !== null && port.default !== undefined ? port.default : defaultForType(port.type)
+            
+            // For JSON types, convert objects/arrays to JSON strings for the textarea
+            if (port.type === 'json' && typeof defaultValue === 'object' && defaultValue !== null) {
+              defaultValue = JSON.stringify(defaultValue, null, 2)
+            }
+            
+            form[name] = defaultValue
+          }
         }
-        
-        form[name] = defaultValue
+      } else {
+        // Inputs is an object format
+        for (const [name, port] of Object.entries(lockData.inputs)) {
+          // Check if this type is defined in the types field (custom type)
+          if (lockData.types && port.type && lockData.types[port.type]) {
+            // Extract the schema from types and use it as the default value
+            const schema = lockData.types[port.type]
+            // Stringify the schema for display in the textarea
+            form[name] = JSON.stringify(schema, null, 2)
+          } else {
+            // Use the default value from the lock file if available, otherwise use type-based default
+            let defaultValue = port.default !== null && port.default !== undefined ? port.default : defaultForType(port.type)
+            
+            // For JSON types, convert objects/arrays to JSON strings for the textarea
+            if (port.type === 'json' && typeof defaultValue === 'object' && defaultValue !== null) {
+              defaultValue = JSON.stringify(defaultValue, null, 2)
+            }
+            
+            form[name] = defaultValue
+          }
+        }
       }
     }
   } catch (error) {
@@ -115,9 +149,22 @@ async function fetchData() {
 // Derived lists for rendering
 const inputs = computed(() => {
   if (!data.value?.inputs) return []
+  // Handle both array and object formats for inputs
+  if (Array.isArray(data.value.inputs)) {
+    return data.value.inputs.map((port) => ({
+      name: port.name,
+      description: port.description,
+      type: port.type,
+      required: port.required,
+      default: port.default
+    }))
+  }
   return Object.entries(data.value.inputs).map(([name, port]) => ({
     name,
-    ...port
+    description: port.description,
+    type: port.type,
+    required: port.required,
+    default: port.default
   }))
 })
 const outputs = computed(() => {
@@ -128,8 +175,18 @@ const outputs = computed(() => {
   }))
 })
 
+// Check if a type is defined in the lock file's types
+function isCustomType(type: string): boolean {
+  return !!(data.value?.types && data.value.types[type])
+}
+
 // Optional: simple per-field hint from type
 function placeholderFor(p: LockFilePort & { name: string }) {
+  // If it's a custom type, use a specific placeholder
+  if (isCustomType(p.type)) {
+    return `Enter ${p.name} (custom type: ${p.type})…`
+  }
+  
   switch (p.type) {
     case 'string': return `Enter ${p.name}…`
     case 'number': return `Enter number for ${p.name}…`
@@ -338,6 +395,15 @@ watch(
             :placeholder="placeholderFor(p)"
             v-model="form[p.name]"
           />
+
+          <!-- CUSTOM TYPE (from lock file types) -->
+          <textarea
+            v-else-if="isCustomType(p.type)"
+            class="border rounded px-3 py-2 font-mono"
+            rows="6"
+            :placeholder="placeholderFor(p)"
+            v-model="form[p.name]"
+          ></textarea>
 
           <!-- Fallback (treat as STRING) -->
           <input
