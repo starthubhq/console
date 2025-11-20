@@ -42,6 +42,9 @@ const secrets = reactive<Record<string, string>>({})
 // form state keyed by input port name
 const form = reactive<Record<string, any>>({})
 
+// Track which string fields have multi-line content (regardless of field name)
+const multilineFields = reactive<Set<string>>(new Set())
+
 // Build sensible defaults per port type
 function defaultForType(t: PortType) {
   switch (t) {
@@ -90,6 +93,9 @@ async function fetchData() {
     
     data.value = lockData
 
+    // Clear multi-line fields tracking when loading new data
+    multilineFields.clear()
+    
     // initialize form defaults from inputs
     if (lockData?.inputs) {
       // Handle both array and object formats for inputs
@@ -113,6 +119,11 @@ async function fetchData() {
             }
             
             form[name] = defaultValue
+            
+            // Check if default value has newlines and mark as multi-line
+            if (port.type === 'string' && typeof defaultValue === 'string' && defaultValue.includes('\n')) {
+              multilineFields.add(name)
+            }
           }
         }
       } else {
@@ -134,6 +145,11 @@ async function fetchData() {
             }
             
             form[name] = defaultValue
+            
+            // Check if default value has newlines and mark as multi-line
+            if (port.type === 'string' && typeof defaultValue === 'string' && defaultValue.includes('\n')) {
+              multilineFields.add(name)
+            }
           }
         }
       }
@@ -180,6 +196,55 @@ function isCustomType(type: string): boolean {
   return !!(data.value?.types && data.value.types[type])
 }
 
+// Check if a string input should use a textarea (only based on whether it has multi-line content)
+function shouldUseTextarea(port: LockFilePort & { name: string }): boolean {
+  if (port.type !== 'string') return false
+  
+  // Check if this field has been marked as multi-line
+  if (multilineFields.has(port.name)) {
+    return true
+  }
+  
+  // Check if the current value contains newlines
+  const currentValue = form[port.name]
+  if (typeof currentValue === 'string' && currentValue.includes('\n')) {
+    multilineFields.add(port.name)
+    return true
+  }
+  
+  // Check if the default value contains newlines
+  if (typeof port.default === 'string' && port.default.includes('\n')) {
+    multilineFields.add(port.name)
+    return true
+  }
+  
+  return false
+}
+
+// Handle paste events to detect multi-line content
+function handlePaste(event: ClipboardEvent, port: LockFilePort & { name: string }) {
+  if (port.type !== 'string') return
+  
+  const pastedText = event.clipboardData?.getData('text')
+  if (!pastedText) return
+  
+  // Check if pasted content contains newlines
+  if (pastedText.includes('\n') || pastedText.includes('\r')) {
+    // Mark this field as multi-line
+    multilineFields.add(port.name)
+    
+    // Normalize line endings and update the form value
+    const normalized = pastedText.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+    form[port.name] = normalized
+    
+    // Prevent default paste behavior if we're in an input field
+    // (we've already set the value manually, and input fields strip newlines)
+    if (event.target instanceof HTMLInputElement) {
+      event.preventDefault()
+    }
+  }
+}
+
 // Optional: simple per-field hint from type
 function placeholderFor(p: LockFilePort & { name: string }) {
   // If it's a custom type, use a specific placeholder
@@ -208,6 +273,15 @@ function coerceValue(port: LockFilePort, raw: any) {
     } catch {
       // JSON parse failed, continue to type-specific parsing
     }
+  }
+  
+  // For string types, preserve the string as-is
+  // JSON.stringify will properly escape newlines when serializing
+  // The key is that textarea preserves newlines, while input fields don't
+  if (port.type === 'string' && typeof raw === 'string') {
+    // Normalize line endings to \n (Unix-style)
+    // JSON.stringify will escape these as \n in the JSON output
+    return raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   }
   
   // Try to parse as number
@@ -350,12 +424,23 @@ watch(
           <p v-if="p.description" class="text-xs text-gray-600">{{ p.description }}</p>
 
           <!-- STRING -->
+          <!-- Use textarea for multi-line strings (detected dynamically) -->
+          <textarea
+            v-if="p.type === 'string' && shouldUseTextarea(p)"
+            class="border rounded px-3 py-2 font-mono"
+            rows="8"
+            :placeholder="placeholderFor(p)"
+            v-model="form[p.name]"
+            @paste="(e) => handlePaste(e, p)"
+          ></textarea>
+          <!-- Use regular input for single-line strings -->
           <input
-            v-if="p.type === 'string'"
+            v-else-if="p.type === 'string'"
             type="text"
             class="border rounded px-3 py-2"
             :placeholder="placeholderFor(p)"
             v-model="form[p.name]"
+            @paste="(e) => handlePaste(e, p)"
           />
 
           <!-- NUMBER -->
