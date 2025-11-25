@@ -5,6 +5,7 @@ import InputsComponent from '@/components/InputsComponent.vue';
 import DiagramComponent from '@/components/DiagramComponent.vue';
 import LogsComponent from '@/components/LogsComponent.vue';
 import TreeComponent from '@/components/TreeComponent.vue';
+import VncComponent from '@/components/VncComponent.vue';
 </script>
 
 <template>
@@ -17,11 +18,12 @@ import TreeComponent from '@/components/TreeComponent.vue';
           </div>
         </Pane>
 
-        <!-- <Pane min-size="20">
+        <Pane min-size="20">
           <div class="panel">
-            <DiagramComponent></DiagramComponent>
+            <VncComponent></VncComponent>
+            <!-- <DiagramComponent></DiagramComponent> -->
           </div>
-        </Pane> -->
+        </Pane>
       </Splitpanes>
     </Pane>
 
